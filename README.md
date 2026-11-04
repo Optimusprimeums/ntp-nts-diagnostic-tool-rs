@@ -17,6 +17,10 @@ The Python 2.x releases remain at [Optimusprimeums/ntp-nts-diagnostic-tool](http
 
 3.0.0 completed repeated authenticated NTS exchanges against Cloudflare's public `time.cloudflare.com` service. The 2.x Python releases were also validated against an independent ESP32-P4 NTS server; re-check that pairing with 3.0.0.
 
+## The window
+
+The app has a light, dark or follow-system theme, and remembers its settings between launches. The sidebar holds the client, responder and Windows controls. The main area shows live counters, offset and delay charts, timing statistics, and a filterable, colour-coded log. Press Ctrl+Enter to start a run and Esc to stop it.
+
 ## Command line
 
 ```text

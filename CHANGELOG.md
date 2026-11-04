@@ -5,6 +5,10 @@
 Rewritten in Rust. Two standalone executables: the windowed `NTP-NTS-Diagnostic-Tool.exe` and the command-line `ntpnts.exe`.
 
 ### Added
+- A redesigned window: a header with live status pills, a sidebar with Client, Responder and Windows cards, KPI tiles, live offset and delay charts with hover readout, and a card-style log console.
+- Light, dark and follow-system themes, using native Segoe UI, Cascadia Mono and Segoe Fluent icons on Windows (egui's bundled fonts elsewhere).
+- Settings (server, counts, NTS options, responder, theme, log file) are remembered between launches.
+- Ctrl+Enter starts a run and Esc stops it. The window has an app icon and a progress bar during runs.
 - `ntpnts` command line: `query`, `respond`, `self-test`, `modes`, with `--log` and exit codes.
 - `host:port` and `[IPv6]:port` targets, so you can test NTS-KE on non-standard ports and query a responder on a test port.
 - Statistics: loss, timeouts, authenticated count, and offset/delay last/mean/min/max/stddev/jitter.
