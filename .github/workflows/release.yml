@@ -68,7 +68,9 @@ jobs:
           Compress-Archive $name "out\$name-portable.zip"
           Copy-Item target\release\setup.exe "out\$name-setup.exe"
           Push-Location out
-          Get-ChildItem | ForEach-Object { "$((Get-FileHash $_.Name -Algorithm SHA256).Hash.ToLower())  $($_.Name)" } | Set-Content -Encoding ascii SHA256SUMS.txt
+          # LF line endings, so `sha256sum -c` works on Linux as well as Windows.
+          $sums = Get-ChildItem | ForEach-Object { "$((Get-FileHash $_.Name -Algorithm SHA256).Hash.ToLower())  $($_.Name)`n" }
+          [IO.File]::WriteAllText("$PWD\SHA256SUMS.txt", -join $sums)
           Pop-Location
       - name: Check every program has the icon
         shell: pwsh
@@ -137,6 +139,30 @@ jobs:
       VERSION: ${{ needs.release.outputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # This repository is private, so the public repository carries a copy of
+      # each release for the website's download buttons to point at.
+      - name: Copy the release to the public repository
+        if: github.ref_type == 'tag'
+        env:
+          PRIVATE_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.DOCS_PAT }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::warning::DOCS_PAT is not set, so the release was not copied to ${PUBLIC}."
+            exit 0
+          fi
+          tag="v${VERSION}"
+          GH_TOKEN="$PRIVATE_TOKEN" gh release download "$tag" -R "$GITHUB_REPOSITORY" -D mirror
+          GH_TOKEN="$PRIVATE_TOKEN" gh release view "$tag" -R "$GITHUB_REPOSITORY" --json body --jq .body > mirror-notes.md
+          if gh release view "$tag" -R "$PUBLIC" > /dev/null 2>&1; then
+            gh release upload "$tag" mirror/* -R "$PUBLIC" --clobber
+            gh release edit "$tag" -R "$PUBLIC" --notes-file mirror-notes.md
+          else
+            pre=(); [[ "$VERSION" == *-* ]] && pre=(--prerelease)
+            gh release create "$tag" mirror/* -R "$PUBLIC" --target main \
+              --title "NTP/NTS Diagnostic Tool $tag" --notes-file mirror-notes.md "${pre[@]}"
+          fi
       - name: Update the website and wiki
         env:
           GH_TOKEN: ${{ secrets.DOCS_PAT }}
@@ -146,8 +172,7 @@ jobs:
             echo "::warning::DOCS_PAT is not set, so the website and wiki were not updated. See docs/wiki/Building-and-Releasing.md."
             exit 0
           fi
-          RELEASE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/tag/v${VERSION}"
-          export RELEASE_URL DOWNLOAD_URL="$RELEASE_URL"
+          # publish-docs.sh points the download buttons at the public copy of the release.
           git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/${PUBLIC}.git" public
           git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/${PUBLIC}.wiki.git" wiki
           bash scripts/publish-docs.sh public wiki

@@ -7,8 +7,8 @@
 # Environment:
 #   VERSION       release version, e.g. 3.1.0 (default: the VERSION file)
 #   RELEASE_DATE  e.g. 2026-11-03 (default: the CHANGELOG.md heading, else today)
-#   DOWNLOAD_URL  where the site's download buttons point
-#   RELEASE_URL   the release notes page
+#   DOWNLOAD_URL  where the site's download buttons point (default: RELEASE_URL)
+#   RELEASE_URL   the release notes page (default: the public repository's copy)
 set -euo pipefail
 
 pub=${1:?public repository checkout}
