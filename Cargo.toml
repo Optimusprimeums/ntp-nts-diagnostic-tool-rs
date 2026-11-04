@@ -1,0 +1,37 @@
+[package]
+name = "ntp_nts_diag"
+version = "3.0.0"
+edition = "2024"
+rust-version = "1.88"
+description = "NTPv4 and RFC 8915 NTS diagnostic tool with a fault-injecting NTP responder"
+license = "MIT"
+repository = "https://github.com/Optimusprimeums/ntp-nts-diagnostic-tool-rs"
+default-run = "NTP-NTS-Diagnostic-Tool"
+
+[[bin]]
+name = "NTP-NTS-Diagnostic-Tool"
+path = "src/main.rs"
+
+[[bin]]
+name = "ntpnts"
+path = "src/bin/ntpnts.rs"
+
+[dependencies]
+aes-siv = "0.8.0"
+chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
+clap = { version = "4.6.7", features = ["derive"] }
+# glow (OpenGL) instead of the default wgpu: smaller binary, works over RDP and in VMs.
+eframe = { version = "0.37.0", default-features = false, features = ["default_fonts", "glow", "accesskit", "clipboard", "wayland", "x11"] }
+getrandom = "0.4.3"
+rfd = "0.17.2"
+rustls = { version = "0.23.46", default-features = false, features = ["ring", "std", "logging"] }
+rustls-native-certs = "0.8.5"
+webpki-roots = "1.0.11"
+
+[target."cfg(windows)".dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_UI_Shell", "Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

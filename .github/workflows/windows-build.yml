@@ -1,0 +1,51 @@
+name: Windows Build
+
+on:
+  push:
+    branches: ["main"]
+    tags: ["v*"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+      - name: Check formatting
+        run: cargo fmt --check
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+      - name: Test
+        run: cargo test
+      - name: Build release executables
+        run: cargo build --release --locked
+      - name: Self-test the built CLI
+        run: target\release\ntpnts.exe self-test
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: NTP-NTS-Diagnostic-Tool-Windows
+          path: |
+            target/release/NTP-NTS-Diagnostic-Tool.exe
+            target/release/ntpnts.exe
+          if-no-files-found: error
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            target/release/NTP-NTS-Diagnostic-Tool.exe
+            target/release/ntpnts.exe
+          generate_release_notes: true
