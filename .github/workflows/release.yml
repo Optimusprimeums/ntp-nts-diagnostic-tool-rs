@@ -175,6 +175,16 @@ jobs:
           # publish-docs.sh points the download buttons at the public copy of the release.
           git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/${PUBLIC}.git" public
           git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/${PUBLIC}.wiki.git" wiki
+          # Asking to push needs write access even when there is nothing to send,
+          # so a token that can only read fails here rather than on a later release.
+          for repo in public wiki; do
+            if ! git -C "$repo" push --dry-run -q origin HEAD 2>push-check.log; then
+              cat push-check.log >&2
+              echo "::error::DOCS_PAT cannot push to the $repo repository. See docs/wiki/Building-and-Releasing.md."
+              exit 1
+            fi
+            echo "DOCS_PAT can push to $repo."
+          done
           bash scripts/publish-docs.sh public wiki
           for repo in public wiki; do
             git -C "$repo" config user.name 'github-actions[bot]'
