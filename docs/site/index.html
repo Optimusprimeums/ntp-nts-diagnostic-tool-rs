@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="NTP/NTS Diagnostic Tool {{VERSION}}: NTPv4 and RFC 8915 Network Time Security diagnostics for Windows, with a fault-injecting NTP responder.">
+<meta name="color-scheme" content="light dark">
+<title>NTP/NTS Diagnostic Tool</title>
+<link rel="icon" href="icon.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <nav>
+    <a class="brand" href="#top"><img src="icon.png" alt="" width="26" height="26">NTP/NTS Diagnostic Tool</a>
+    <div class="links">
+      <a href="#features">Features</a>
+      <a href="#install">Install</a>
+      <a href="#cli">Command line</a>
+      <a href="{{WIKI_URL}}">Wiki</a>
+      <a href="{{REPO_URL}}">GitHub</a>
+    </div>
+  </nav>
+</header>
+<main id="top">
+  <section class="hero">
+    <div>
+      <span class="badge">v{{VERSION}} · released {{DATE}} · Windows 10 and 11</span>
+      <h1>See exactly what your time server is doing.</h1>
+      <p class="lead">A diagnostic client for NTPv4 and RFC 8915 Network Time Security, and a fault-injecting NTP responder for testing clients and peers. Real TLS 1.3 key exchange, authenticated NTP, live charts and a full protocol log.</p>
+      <div class="actions">
+        <a class="button primary" href="{{DOWNLOAD_URL}}">Download v{{VERSION}}</a>
+        <a class="button" href="{{WIKI_URL}}">Read the wiki</a>
+      </div>
+      <p class="fine">Installer or portable zip · no runtime to install · no administrator rights needed</p>
+    </div>
+    <div class="card status">
+      <h3>Authenticated NTS</h3>
+      <code>NTS-KE SUCCESS: TLSv1.3, ALPN=ntske/1, AEAD=15</code>
+      <code>received 8 cookie(s); NTP endpoint=…:123</code>
+      <code class="ok">NTS AUTHENTICATED: UID matched, S2C tag verified</code>
+      <div class="metrics"><b>30<small>Sent</small></b><b>30<small>Received</small></b><b class="ok">30<small>Authenticated</small></b></div>
+    </div>
+  </section>
+
+  <section class="shot">
+    <picture>
+      <source srcset="screenshots/v3-dark.png" media="(prefers-color-scheme: dark)">
+      <img src="screenshots/v3-light.png" alt="The NTP/NTS Diagnostic Tool window after an authenticated NTS run against time.cloudflare.com" loading="lazy">
+    </picture>
+  </section>
+
+  <section id="features">
+    <h2>Protocol diagnostics without guesswork</h2>
+    <div class="grid">
+      <article><h3>Real NTS</h3><p>TLS 1.3 NTS-KE on TCP 4460 with <code>ntske/1</code>, exporter-derived keys, cookies and placeholders, and AEAD_AES_SIV_CMAC_256. Handles NTS-KE warnings and NTSN by re-keying.</p></article>
+      <article><h3>Checked replies</h3><p>Every reply must come from the server queried and echo the request's timestamp. NTS replies must match the UID and verify the server-to-client tag.</p></article>
+      <article><h3>Live timing</h3><p>Offset and delay charts, with last, mean, min, max, standard deviation and jitter. Calculated in exact 64-bit NTP fixed point, safe past 2036.</p></article>
+      <article><h3>Kiss-o'-Death aware</h3><p>RATE, DENY, RSTR and NTSN are reported by name. You're also warned about LI=3, stratum 16 and large root dispersion.</p></article>
+      <article><h3>Fault-injecting responder</h3><p>19 modes, from Kiss-o'-Death codes, bad originate timestamps and truncated packets to replay, drops, delays and clock offsets. Use it to test how NTP clients and peers cope.</p></article>
+      <article><h3>Self-test suite</h3><p>Every responder mode is checked over loopback, on the wire and against the tool's own client, in one click or <code>ntpnts self-test</code>.</p></article>
+      <article><h3>Windows aware</h3><p>Optional restart as Administrator, and a firewall rule for the responder port (Domain and Private only) with live status. It also warns when Windows Time holds UDP/123.</p></article>
+      <article><h3>Modern and quick</h3><p>Light, dark or system theme, remembered settings, a filterable colour-coded log, and Ctrl+Enter / Esc shortcuts. Native Rust, starts instantly.</p></article>
+    </div>
+  </section>
+
+  <section id="install" class="split">
+    <div>
+      <h2>Install in seconds</h2>
+      <p>Download <code>NTP-NTS-Diagnostic-Tool-{{VERSION}}-setup.exe</code> and run it. It installs for you only, into <code>%LOCALAPPDATA%\Programs</code>, adds a Start menu entry, and can be removed from Settings &gt; Apps. Running a newer setup upgrades in place and keeps your settings.</p>
+      <p>Prefer nothing installed? The <code>-portable.zip</code> holds the same programs. Every release lists SHA-256 hashes in <code>SHA256SUMS.txt</code>.</p>
+      <p><a class="button" href="{{WIKI_URL}}/Installing">Installing guide</a></p>
+    </div>
+    <aside class="note">
+      <h3>Scripted install</h3>
+      <pre><code>NTP-NTS-Diagnostic-Tool-{{VERSION}}-setup.exe /S
+uninstall.exe /U /S</code></pre>
+      <p>The installer isn't code-signed yet. If SmartScreen stops it, choose <b>More info</b>, then <b>Run anyway</b>.</p>
+    </aside>
+  </section>
+
+  <section id="guide" class="split">
+    <div>
+      <h2>Your first NTS test</h2>
+      <ol>
+        <li>Start <b>NTP-NTS Diagnostic Tool</b> from the Start menu.</li>
+        <li>Enter <code>time.cloudflare.com</code> as the server.</li>
+        <li>Tick <b>Use NTS</b> and leave certificate verification on.</li>
+        <li>Press <b>Start</b> or Ctrl+Enter.</li>
+        <li>Look for <b>NTS-KE SUCCESS</b>, then <b>NTS AUTHENTICATED</b> for each request.</li>
+      </ol>
+    </div>
+    <aside class="note">
+      <h3>Lab servers</h3>
+      <p>Enter <code>host:port</code> for a non-standard NTS-KE port. A server signed by a private CA works once that CA is in the Windows certificate store, with verification still on.</p>
+    </aside>
+  </section>
+
+  <section id="cli">
+    <h2>The same engine on the command line</h2>
+    <p class="muted"><code>ntpnts.exe</code> comes with the installer. <code>query</code> and <code>self-test</code> exit with code 1 on any failure, so they can gate a CI job.</p>
+<pre><code>ntpnts query time.cloudflare.com --nts -n 10 -d 500
+ntpnts query 192.168.1.50:4460 --nts --insecure   # lab server, self-signed certificate
+ntpnts query pool.ntp.org                         # plain NTPv4
+ntpnts respond --port 12300 --mode kod-deny       # fault-injecting responder
+ntpnts self-test                                  # loopback regression suite</code></pre>
+  </section>
+
+  <section class="split">
+    <div>
+      <h2>Long-duration testing</h2>
+      <p>500 requests at 5000 ms run for about 42 minutes. A finished run with <b>Received</b> and <b>Authenticated</b> equal to <b>Sent</b> and every failure counter at zero is good evidence the server handled NTS correctly for that period.</p>
+      <p>Pick a delay the server's rate limit allows: some NTS servers silently drop requests over their limit.</p>
+    </div>
+    <aside class="note">
+      <h3>Timing caveat</h3>
+      <p>Client T1/T4 are userspace timestamps, not NIC hardware timestamps. Scheduling and path asymmetry affect offset and delay.</p>
+    </aside>
+  </section>
+
+  <section id="versions">
+    <h2>Releases</h2>
+    <div class="grid">
+      <article><h3>v{{VERSION}} · current</h3><p>Rust. A Windows installer, the window and the <code>ntpnts</code> command line. <a href="{{RELEASE_URL}}">Release notes</a> · <a href="{{WIKI_URL}}/Changelog">changelog</a></p></article>
+      <article><h3>v2.1.0 and v2.0.2</h3><p>The earlier Python releases, including the Linux command line. <a href="https://github.com/optimusprime-nn/ntp-nts-diagnostic-tool/releases">Python releases</a> · <a href="{{WIKI_URL}}/Version-2.x">moving to 3.x</a></p></article>
+    </div>
+  </section>
+</main>
+<footer>© 2026 Nicholas Newman · MIT License · NTP/NTS Diagnostic Tool {{VERSION}}</footer>
+</body>
+</html>

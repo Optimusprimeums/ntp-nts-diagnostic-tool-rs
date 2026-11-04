@@ -34,6 +34,7 @@ pub mod icon {
     pub const MOON: char = '\u{E708}';
     pub const SYSTEM: char = '\u{E7F8}';
     pub const FIREWALL: char = '\u{E83D}';
+    pub const REFRESH: char = '\u{E72C}';
 }
 
 /// Colours that depend on light/dark mode.

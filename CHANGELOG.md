@@ -1,5 +1,23 @@
 # Changelog
 
+## [3.1.0] - 2026-11-03
+
+### Added
+- A Windows installer, `NTP-NTS-Diagnostic-Tool-<version>-setup.exe`. It installs for the current user without administrator rights, adds a Start menu entry and an entry in Settings > Apps, and upgrades in place. `/S` installs silently, and `uninstall.exe /U [/S]` removes it. Each release also has a portable zip and `SHA256SUMS.txt`.
+- The programs carry the app icon in Explorer, the taskbar and the Start menu.
+- The 2.x launch prompts are back: restart as Administrator when not elevated, and add the firewall rule when elevated without one. Each has a **Don't ask at startup** box.
+- The Windows card shows the firewall rule's live status. It warns when the rule allows a different port from the responder's, and when Windows Time holds UDP/123. It adds **Remove rule** and a refresh button.
+- Declining the UAC prompt now says so, instead of reporting a ShellExecute error code.
+- A website and wiki for 3.x, published automatically with every release.
+- `NTPNTS_SCREENSHOT=<file.png>` runs an unattended NTS test and saves the window, for the docs.
+
+### Fixed
+- Kiss-o'-Death replies no longer also raise the "clock not synchronised" (LI=3) warning.
+- The Windows card is visible again. Its button row was wider than the sidebar, which pushed the sidebar's scrollbar under the main area. The card sat below the fold at the default window size with nothing to show it was there. The row now wraps, and the scrollbar is always shown.
+
+### Changed
+- Releases are built by a new Release workflow: tests, programs, installer, an install-and-remove check, the release itself, then the website and wiki.
+
 ## [3.0.0] - 2026-11-03
 
 Rewritten in Rust. Two standalone executables: the windowed `NTP-NTS-Diagnostic-Tool.exe` and the command-line `ntpnts.exe`.

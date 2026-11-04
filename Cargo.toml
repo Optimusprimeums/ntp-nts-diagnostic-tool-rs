@@ -1,10 +1,22 @@
-[package]
-name = "ntp_nts_diag"
-version = "3.0.0"
+[workspace]
+members = ["setup"]
+# The installer embeds the release executables, so it is built on its own:
+# see docs/wiki/Building-and-Releasing.md.
+default-members = ["."]
+
+[workspace.package]
+version = "3.1.0"
 edition = "2024"
 rust-version = "1.88"
-description = "NTPv4 and RFC 8915 NTS diagnostic tool with a fault-injecting NTP responder"
 license = "MIT"
+
+[package]
+name = "ntp_nts_diag"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "NTPv4 and RFC 8915 NTS diagnostic tool with a fault-injecting NTP responder"
+license.workspace = true
 repository = "https://github.com/Optimusprimeums/ntp-nts-diagnostic-tool-rs"
 default-run = "NTP-NTS-Diagnostic-Tool"
 
@@ -23,11 +35,15 @@ clap = { version = "4.6.7", features = ["derive"] }
 # glow (OpenGL) instead of the default wgpu: smaller binary, works over RDP and in VMs.
 eframe = { version = "0.37.0", default-features = false, features = ["default_fonts", "glow", "accesskit", "clipboard", "persistence", "wayland", "x11"] }
 getrandom = "0.4.3"
+png = "0.18.1"
 rfd = "0.17.2"
 rustls = { version = "0.23.46", default-features = false, features = ["ring", "std", "logging"] }
 rustls-native-certs = "0.8.5"
 serde = { version = "1.0.229", features = ["derive"] }
 webpki-roots = "1.0.11"
+
+[target."cfg(windows)".build-dependencies]
+embed-resource = "3"
 
 [target."cfg(windows)".dependencies]
 windows-sys = { version = "0.61.2", features = ["Win32_UI_Shell", "Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }

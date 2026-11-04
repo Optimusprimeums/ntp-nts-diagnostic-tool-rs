@@ -1,0 +1,25 @@
+[package]
+name = "ntpnts-setup"
+description = "Windows installer for the NTP/NTS Diagnostic Tool"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[[bin]]
+name = "setup"
+path = "src/main.rs"
+
+[target."cfg(windows)".build-dependencies]
+embed-resource = "3"
+
+[target."cfg(windows)".dependencies]
+eframe = { version = "0.37.0", default-features = false, features = ["default_fonts", "glow", "accesskit"] }
+winreg = "0.56"
+windows = { version = "0.62", features = [
+    "Win32_System_Com",
+    "Win32_System_LibraryLoader",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+] }

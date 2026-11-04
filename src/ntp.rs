@@ -116,6 +116,10 @@ impl NtpResponse {
     /// Conditions that are legal on the wire but mean the time should not be trusted.
     pub fn warnings(&self) -> Vec<String> {
         let mut w = Vec::new();
+        // A Kiss-o'-Death carries LI=3 by definition (RFC 5905 §7.4); it is reported separately.
+        if self.is_kod() {
+            return w;
+        }
         if self.leap == 3 {
             w.push("LI=3: server clock is unsynchronized (alarm condition)".to_string());
         }
@@ -347,6 +351,8 @@ mod tests {
             validate_response(&m, t1, t1).unwrap().kiss_code.as_deref(),
             Some("RATE")
         );
+        m[0] = 0xE4; // KoD packets carry LI=3
+        assert!(validate_response(&m, t1, t1).unwrap().warnings().is_empty());
     }
 
     #[test]

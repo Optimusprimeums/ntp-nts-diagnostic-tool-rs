@@ -51,7 +51,11 @@ pub fn restart_as_admin() -> Result<(), String> {
     if rc as isize > 32 {
         Ok(())
     } else {
-        Err(format!("ShellExecuteW failed (code {})", rc as isize))
+        match rc as isize {
+            // SE_ERR_ACCESSDENIED: the user declined the UAC prompt.
+            5 => Err("the UAC prompt was declined".into()),
+            code => Err(format!("ShellExecuteW failed (code {code})")),
+        }
     }
 }
 
@@ -103,5 +107,108 @@ pub fn configure_firewall_rule(port: u16) -> Result<String, String> {
         } else {
             text
         })
+    }
+}
+
+/// The responder's inbound firewall rule as Windows reports it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FirewallRule {
+    pub enabled: bool,
+    pub protocol: String,
+    pub local_port: String,
+    pub profiles: String,
+}
+
+impl FirewallRule {
+    pub fn allows_port(&self, port: u16) -> bool {
+        self.enabled
+            && self.protocol.eq_ignore_ascii_case("UDP")
+            && (self.local_port.eq_ignore_ascii_case("Any")
+                || self
+                    .local_port
+                    .split(',')
+                    .any(|p| p.trim().parse::<u16>() == Ok(port)))
+    }
+}
+
+/// Parse the first rule from `netsh advfirewall firewall show rule` output.
+/// Field names are English; on other UI languages the fields may be blank.
+fn parse_rule(text: &str) -> FirewallRule {
+    let field = |name: &str| {
+        text.lines()
+            .find_map(|l| {
+                l.strip_prefix(name)
+                    .map(|v| v.trim_start_matches(':').trim().to_string())
+            })
+            .unwrap_or_default()
+    };
+    FirewallRule {
+        enabled: field("Enabled").eq_ignore_ascii_case("Yes"),
+        protocol: field("Protocol"),
+        local_port: field("LocalPort"),
+        profiles: field("Profiles"),
+    }
+}
+
+/// `Ok(None)` when no rule of ours exists. Reading rules does not need elevation.
+pub fn firewall_rule_status() -> Result<Option<FirewallRule>, String> {
+    let name = format!("name={FIREWALL_RULE_NAME}");
+    let out = netsh(&["advfirewall", "firewall", "show", "rule", &name])
+        .map_err(|e| format!("could not run netsh: {e}"))?;
+    if !out.status.success() {
+        return Ok(None);
+    }
+    Ok(Some(parse_rule(&String::from_utf8_lossy(&out.stdout))))
+}
+
+/// Delete the responder's firewall rule. Requires elevation.
+pub fn remove_firewall_rule() -> Result<String, String> {
+    if !is_admin() {
+        return Err("Administrator privileges are required to change Windows Firewall.".into());
+    }
+    let name = format!("name={FIREWALL_RULE_NAME}");
+    let out = netsh(&["advfirewall", "firewall", "delete", "rule", &name])
+        .map_err(|e| format!("could not run netsh: {e}"))?;
+    if out.status.success() {
+        Ok(format!("removed firewall rule '{FIREWALL_RULE_NAME}'"))
+    } else {
+        Err("no firewall rule with that name exists".into())
+    }
+}
+
+/// Whether the Windows Time service (which normally owns UDP/123) is running.
+pub fn w32time_running() -> Option<bool> {
+    let out = Command::new("sc")
+        .args(["query", "w32time"])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+        .ok()?;
+    let text = String::from_utf8_lossy(&out.stdout);
+    let state = text.lines().find(|l| l.contains("STATE"))?;
+    Some(state.contains("RUNNING"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_netsh_rule() {
+        let text = "Rule Name:      NTP-NTS Diagnostic Tool Peer Responder\n\
+                    ----------------------------------------------------------------------\n\
+                    Enabled:        Yes\nDirection:      In\nProfiles:       Domain,Private\n\
+                    Protocol:       UDP\nLocalPort:      123\nAction:         Allow\nOk.\n";
+        let r = parse_rule(text);
+        assert_eq!(
+            r,
+            FirewallRule {
+                enabled: true,
+                protocol: "UDP".into(),
+                local_port: "123".into(),
+                profiles: "Domain,Private".into()
+            }
+        );
+        assert!(r.allows_port(123));
+        assert!(!r.allows_port(12300));
     }
 }

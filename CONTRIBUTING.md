@@ -10,4 +10,6 @@ Contributions are welcome.
 6. Run `cargo fmt`, `cargo clippy --all-targets` and `cargo test`, and a `cargo build --release` before submitting release-related changes.
 7. Describe interoperability results and security-relevant behavior changes in the pull request.
 
-Version 3.0.0 (Rust) is validated against `time.cloudflare.com`; 2.0.2 (Python) is the previous known-good baseline.
+Version 3.x (Rust) is validated against `time.cloudflare.com` and two ESP32-P4 NTS servers; 2.0.2 (Python) is the previous known-good baseline.
+
+User documentation lives in `docs/wiki` and the website in `docs/site`. Change them in the same pull request as the behaviour they describe; each release publishes them.

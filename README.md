@@ -2,7 +2,7 @@
 
 A diagnostic utility for testing **NTPv4** and **Network Time Security (NTS)** servers, plus a fault-injecting NTP responder for testing NTP clients and peers.
 
-Version **3.0.0** is a rewrite in Rust. It ships as two self-contained executables with no runtime to install:
+Version **3.1.0** is written in Rust. It comes with a Windows installer and has no runtime to install. It ships as two programs:
 
 | Executable | Purpose |
 |---|---|
@@ -11,11 +11,15 @@ Version **3.0.0** is a rewrite in Rust. It ships as two self-contained executabl
 
 The client performs real NTS Key Establishment over TLS 1.3, negotiates `ntske/1`, derives client-to-server and server-to-client keys with the TLS exporter, exchanges NTS cookies, sends authenticated NTP requests with AEAD AES-SIV-CMAC-256, verifies authenticated replies, and reports offset, delay, server processing time, jitter and loss.
 
-The Python 2.x releases remain at [Optimusprimeums/ntp-nts-diagnostic-tool](https://github.com/Optimusprimeums/ntp-nts-diagnostic-tool).
+Website: <https://optimusprime-nn.github.io/ntp-nts-diagnostic-tool/> · Wiki: <https://github.com/optimusprime-nn/ntp-nts-diagnostic-tool/wiki>. The Python 2.x releases remain at [optimusprime-nn/ntp-nts-diagnostic-tool](https://github.com/optimusprime-nn/ntp-nts-diagnostic-tool).
+
+## Installing
+
+Each release has `NTP-NTS-Diagnostic-Tool-<version>-setup.exe`, `-portable.zip` and `SHA256SUMS.txt`. The installer installs for you only, into `%LOCALAPPDATA%\Programs\NTP-NTS Diagnostic Tool`, with no administrator rights. It adds a Start menu entry and can be removed in Settings > Apps. Running a newer one upgrades in place. `/S` installs silently; `uninstall.exe /U /S` removes it silently.
 
 ## Validated interoperability
 
-3.0.0 completed repeated authenticated NTS exchanges against Cloudflare's public `time.cloudflare.com` service. The 2.x Python releases were also validated against an independent ESP32-P4 NTS server; re-check that pairing with 3.0.0.
+3.x completed repeated authenticated NTS exchanges, with certificate verification on, against Cloudflare's public `time.cloudflare.com` and two independent ESP32-P4 NTS servers. Against the ESP32-P4 servers, 40 requests at a 2 s interval all authenticated, with no loss and a single key exchange.
 
 ## The window
 
@@ -47,7 +51,7 @@ TLS certificate verification is on by default. It trusts the Mozilla root set **
 
 The responder answers NTP requests with deliberately faulty replies: Kiss-o'-Death RATE, DENY and RSTR codes, bad originate timestamps, truncated packets, wrong mode or version, zero timestamps, leap-indicator alarm, stratum 16, dropped requests, delayed replies, ±100 ms clock offset, 100 ms processing delay, duplicate T3, and verbatim replay. **Run self-test suite** checks every mode over loopback. Each check verifies the bytes on the wire and that this tool's own client accepts, rejects or flags the reply as expected.
 
-On Windows, UDP/123 is usually held by the W32Time service (`net stop w32time`). You can also use any other port. The Windows section of the window shows whether the tool is running as Administrator. From there you can restart it elevated, and when elevated, add a firewall rule for the responder port.
+On Windows, UDP/123 is usually held by the W32Time service (`net stop w32time`). You can also use any other port. At launch the tool offers to restart as Administrator, or, when elevated, to add a firewall rule for the responder port. **Don't ask at startup** turns the prompts off. The Windows card shows the rule's live status and has the same buttons, plus **Remove rule**.
 
 ## Building
 
@@ -58,7 +62,7 @@ cargo test
 cargo build --release
 ```
 
-The executables are written to `target\release\`. `build_windows.bat` runs the same steps and copies the executables to `dist\`. GitHub Actions builds every push and attaches the executables to a release for every `v*` tag.
+The executables are written to `target\release\`. `build_windows.bat` runs the same steps, builds the installer, and copies everything to `dist\`. GitHub Actions checks every push. A `v*` tag matching the version runs the Release workflow. It builds and tests the programs and installer, publishes the release, and updates the website and wiki from `docs/`. See [Building and Releasing](docs/wiki/Building-and-Releasing.md).
 
 ## Standards
 

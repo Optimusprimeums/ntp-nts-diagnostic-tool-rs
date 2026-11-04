@@ -4,7 +4,7 @@ use std::net::{IpAddr, SocketAddr};
 use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, channel};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use eframe::egui::{
     self, Align, Align2, Button, Color32, FontId, Key, Layout, Margin, ProgressBar, RichText,
@@ -24,6 +24,34 @@ use ntp_nts_diag::{APP_NAME, APP_VERSION, StopFlag, selftest};
 const MAX_LOG_LINES: usize = 200_000;
 const MAX_HISTORY: usize = 600;
 const SIDEBAR_WIDTH: f32 = 372.0;
+/// Set to a `.png` path to run an unattended demo and save a screenshot of it (used for the docs).
+const CAPTURE_ENV: &str = "NTPNTS_SCREENSHOT";
+
+/// State of an unattended screenshot run.
+struct Capture {
+    path: PathBuf,
+    idle_since: Option<Instant>,
+    requested: bool,
+}
+
+/// Settings for a screenshot run; nothing the user saved is used or overwritten.
+fn capture_settings() -> Settings {
+    let env = |k: &str| std::env::var(k).ok().filter(|v| !v.is_empty());
+    Settings {
+        target: env("NTPNTS_SCREENSHOT_TARGET").unwrap_or_else(|| "time.cloudflare.com".into()),
+        count: 30,
+        delay_ms: 1000,
+        nts: true,
+        bind: "127.0.0.1".into(),
+        port: 12300,
+        theme: match env("NTPNTS_SCREENSHOT_THEME").as_deref() {
+            Some("light") => ThemeChoice::Light,
+            _ => ThemeChoice::Dark,
+        },
+        startup_prompts: false,
+        ..Settings::default()
+    }
+}
 
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Default)]
 enum ThemeChoice {
@@ -43,6 +71,19 @@ impl From<ThemeChoice> for ThemePreference {
     }
 }
 
+/// A modal dialog: the launch prompts carried over from 2.x, or an action's result.
+#[cfg(windows)]
+#[derive(Clone)]
+enum Dialog {
+    Elevate,
+    Firewall,
+    Result {
+        title: String,
+        body: String,
+        ok: bool,
+    },
+}
+
 /// Everything remembered between launches.
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(default)]
@@ -58,6 +99,8 @@ struct Settings {
     port: u16,
     mode: String,
     theme: ThemeChoice,
+    /// Ask about elevation / the firewall rule at launch, as 2.x did.
+    startup_prompts: bool,
 }
 
 impl Default for Settings {
@@ -75,6 +118,7 @@ impl Default for Settings {
             port: 123,
             mode: FaultMode::Valid.name().into(),
             theme: ThemeChoice::System,
+            startup_prompts: true,
         }
     }
 }
@@ -99,6 +143,15 @@ pub struct App {
 
     log: Vec<String>,
     filter: String,
+
+    #[cfg(windows)]
+    dialog: Option<Dialog>,
+    #[cfg(windows)]
+    fw_rule: Result<Option<ntp_nts_diag::win::FirewallRule>, String>,
+    #[cfg(windows)]
+    w32time: Option<bool>,
+
+    capture: Option<Capture>,
 }
 
 impl App {
@@ -110,6 +163,16 @@ impl App {
             .storage
             .and_then(|st| eframe::get_value(st, eframe::APP_KEY))
             .unwrap_or_default();
+        let capture = std::env::var_os(CAPTURE_ENV).map(|p| Capture {
+            path: p.into(),
+            idle_since: None,
+            requested: false,
+        });
+        let s = if capture.is_some() {
+            capture_settings()
+        } else {
+            s
+        };
         ctx.set_theme(s.theme);
 
         let (tx, rx) = channel();
@@ -139,14 +202,64 @@ impl App {
             suite_result: None,
             log: Vec::new(),
             filter: String::new(),
+            #[cfg(windows)]
+            dialog: None,
+            #[cfg(windows)]
+            fw_rule: Ok(None),
+            #[cfg(windows)]
+            w32time: None,
+            capture,
         };
         app.apply_log_file();
         #[cfg(windows)]
-        app.reporter.log(format!(
-            "Windows privilege status: Administrator={}",
-            if is_admin { "YES" } else { "NO" }
-        ));
+        {
+            app.reporter.log(format!(
+                "Windows privilege status: Administrator={}",
+                if is_admin { "YES" } else { "NO" }
+            ));
+            app.refresh_windows_state();
+            if app.s.startup_prompts {
+                let rule_ok = matches!(&app.fw_rule, Ok(Some(r)) if r.allows_port(app.s.port));
+                app.dialog = match (is_admin, rule_ok) {
+                    (false, _) => Some(Dialog::Elevate),
+                    (true, false) => Some(Dialog::Firewall),
+                    (true, true) => None,
+                };
+            }
+        }
+        if app.capture.is_some() {
+            app.start_responder();
+            app.start_client();
+        }
         app
+    }
+
+    /// Drive a screenshot run: wait for the client to finish, capture, save, close.
+    fn capture_tick(&mut self, ctx: &egui::Context) {
+        let running = self.running();
+        let Some(c) = &mut self.capture else {
+            return;
+        };
+        ctx.request_repaint_after(Duration::from_millis(100));
+        if c.requested {
+            return;
+        }
+        if running {
+            c.idle_since = None;
+            return;
+        }
+        if c.idle_since.get_or_insert_with(Instant::now).elapsed() > Duration::from_millis(1500) {
+            let (path, ctx2) = (c.path.clone(), ctx.clone());
+            ctx.request_screenshot(move |image| {
+                match save_png(&path, &image) {
+                    Ok(()) => eprintln!("saved {}", path.display()),
+                    Err(e) => eprintln!("screenshot failed: {e}"),
+                }
+                ctx2.send_viewport_cmd(egui::ViewportCommand::Close);
+                ctx2.request_repaint();
+            });
+            c.requested = true;
+        }
     }
 
     /// Prefix `label` with an icon glyph when the icon font is available.
@@ -562,8 +675,80 @@ impl App {
     }
 
     #[cfg(windows)]
+    fn refresh_windows_state(&mut self) {
+        self.fw_rule = ntp_nts_diag::win::firewall_rule_status();
+        self.w32time = ntp_nts_diag::win::w32time_running();
+    }
+
+    #[cfg(windows)]
+    fn elevate(&mut self, ctx: &egui::Context) {
+        match ntp_nts_diag::win::restart_as_admin() {
+            Ok(()) => {
+                self.reporter
+                    .log("Restarting as Administrator; this window will close.");
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
+            Err(e) => {
+                self.reporter
+                    .log(format!("Elevation failed: {e}. Continuing normally."));
+                self.dialog = Some(Dialog::Result {
+                    title: "Elevation failed".into(),
+                    body: format!(
+                        "Windows did not start an elevated copy ({e}). Continuing normally."
+                    ),
+                    ok: false,
+                });
+            }
+        }
+    }
+
+    #[cfg(windows)]
+    fn add_firewall_rule(&mut self) {
+        let port = self.s.port;
+        self.dialog = Some(match ntp_nts_diag::win::configure_firewall_rule(port) {
+            Ok(msg) => {
+                self.reporter.log(format!("FIREWALL: {msg}"));
+                Dialog::Result {
+                    title: "Firewall rule configured".into(),
+                    body: format!(
+                        "Inbound UDP/{port} is now allowed on the Domain and Private profiles \
+                         for the NTP Peer Test Responder."
+                    ),
+                    ok: true,
+                }
+            }
+            Err(e) => {
+                self.reporter.log(format!("FIREWALL ERROR: {e}"));
+                Dialog::Result {
+                    title: "Firewall rule failed".into(),
+                    body: e,
+                    ok: false,
+                }
+            }
+        });
+        self.refresh_windows_state();
+    }
+
+    #[cfg(windows)]
+    fn remove_firewall_rule(&mut self) {
+        match ntp_nts_diag::win::remove_firewall_rule() {
+            Ok(msg) => self.reporter.log(format!("FIREWALL: {msg}")),
+            Err(e) => {
+                self.reporter.log(format!("FIREWALL ERROR: {e}"));
+                self.dialog = Some(Dialog::Result {
+                    title: "Could not remove the rule".into(),
+                    body: e,
+                    ok: false,
+                });
+            }
+        }
+        self.refresh_windows_state();
+    }
+
+    #[cfg(windows)]
     fn windows_card(&mut self, ui: &mut egui::Ui) {
         let p = Palette::of(ui);
+        let port = self.s.port;
         p.card_frame().show(ui, |ui| {
             ui.set_width(ui.available_width());
             let sub = if self.is_admin {
@@ -572,37 +757,169 @@ impl App {
                 "Running as a standard user"
             };
             card_title(ui, &self.ic(icon::SHIELD, ""), "Windows", sub);
+
+            let (text, color) = match &self.fw_rule {
+                Err(e) => (format!("Firewall status unknown: {e}"), WARNING),
+                Ok(None) => ("No firewall rule for the responder".to_string(), p.muted),
+                Ok(Some(r)) if !r.enabled => ("Firewall rule exists but is disabled".into(), WARNING),
+                Ok(Some(r)) if r.allows_port(port) => (
+                    format!("Firewall allows {}/{} · {}", r.protocol, r.local_port, r.profiles),
+                    SUCCESS,
+                ),
+                Ok(Some(r)) => (
+                    format!(
+                        "Firewall rule allows {}/{}; responder uses UDP/{port}",
+                        r.protocol, r.local_port
+                    ),
+                    WARNING,
+                ),
+            };
+            ui.horizontal_wrapped(|ui| pill(ui, &text, color));
+            if port == 123 && self.w32time == Some(true) {
+                ui.horizontal_wrapped(|ui| pill(ui, "Windows Time (W32Time) is running and owns UDP/123", WARNING))
+                    .response
+                    .on_hover_text("Stop it from an elevated prompt with: net stop w32time — or pick another port.");
+            }
+
+            ui.add_space(2.0);
             if !self.is_admin
-                && ui
-                    .button(self.ic(icon::SHIELD, "Restart as Administrator"))
+                && primary_button(ui, &self.ic(icon::SHIELD, "Restart as Administrator"), true, ui.available_width())
                     .on_hover_text("Needed to change Windows Firewall")
                     .clicked()
             {
-                match ntp_nts_diag::win::restart_as_admin() {
-                    Ok(()) => ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close),
-                    Err(e) => self
-                        .reporter
-                        .log(format!("Elevation failed: {e}. Continuing normally.")),
-                }
+                let ctx = ui.ctx().clone();
+                self.elevate(&ctx);
             }
-            let fw = Button::new(self.ic(
-                icon::FIREWALL,
-                &format!("Allow inbound UDP/{} in firewall", self.s.port),
-            ));
-            if ui
-                .add_enabled(self.is_admin, fw)
-                .on_hover_text(
-                    "Creates or refreshes an inbound rule for the Domain and Private profiles",
-                )
-                .on_disabled_hover_text("Restart as Administrator first")
-                .clicked()
-            {
-                match ntp_nts_diag::win::configure_firewall_rule(self.s.port) {
-                    Ok(msg) => self.reporter.log(format!("FIREWALL: {msg}")),
-                    Err(e) => self.reporter.log(format!("FIREWALL ERROR: {e}")),
+            ui.horizontal_wrapped(|ui| {
+                let allow = Button::new(self.ic(icon::FIREWALL, &format!("Allow UDP/{port}")));
+                if ui
+                    .add_enabled(self.is_admin, allow)
+                    .on_hover_text("Creates or refreshes an inbound allow rule (Domain and Private profiles)")
+                    .on_disabled_hover_text("Restart as Administrator first")
+                    .clicked()
+                {
+                    self.add_firewall_rule();
                 }
-            }
+                let has_rule = matches!(self.fw_rule, Ok(Some(_)));
+                if ui
+                    .add_enabled(self.is_admin && has_rule, Button::new(self.ic(icon::DELETE, "Remove rule")))
+                    .on_disabled_hover_text(if has_rule {
+                        "Restart as Administrator first"
+                    } else {
+                        "There is no rule to remove"
+                    })
+                    .clicked()
+                {
+                    self.remove_firewall_rule();
+                }
+                if ui
+                    .button(self.ic(icon::REFRESH, if self.icons { "" } else { "Refresh" }))
+                    .on_hover_text("Refresh the firewall and W32Time status")
+                    .clicked()
+                {
+                    self.refresh_windows_state();
+                }
+            });
         });
+    }
+
+    /// Launch prompts (as in 2.x) and result dialogs.
+    #[cfg(windows)]
+    fn dialogs(&mut self, ctx: &egui::Context) {
+        let Some(dialog) = self.dialog.clone() else {
+            return;
+        };
+        let p = Palette::for_dark(ctx.global_style().visuals.dark_mode);
+        let port = self.s.port;
+        let (mut close, mut do_elevate, mut do_firewall) = (false, false, false);
+        let modal = egui::Modal::new(egui::Id::unique("dialog"))
+            .frame(p.card_frame().inner_margin(Margin::same(22)))
+            .show(ctx, |ui| {
+                ui.set_width(460.0);
+                let (glyph, title, body, color) = match &dialog {
+                    Dialog::Elevate => (
+                        icon::SHIELD,
+                        "Administrator privileges recommended".to_string(),
+                        format!(
+                            "{APP_NAME} includes an NTP Peer Test Responder. Administrator \
+                             privileges are needed to create the optional Windows Firewall rule.\n\n\
+                             Restart as Administrator now? Choose Continue to carry on normally: \
+                             the client and the responder still work."
+                        ),
+                        ACCENT,
+                    ),
+                    Dialog::Firewall => (
+                        icon::FIREWALL,
+                        "Windows Firewall permission".to_string(),
+                        format!(
+                            "Allow inbound NTP peer-test traffic through Windows Defender Firewall?\n\n\
+                             This creates or refreshes the inbound rule \"{}\": UDP, local port \
+                             {port}, Domain and Private profiles.\n\n\
+                             Choose Not now if you only test over loopback or manage the firewall \
+                             separately.",
+                            ntp_nts_diag::win::FIREWALL_RULE_NAME
+                        ),
+                        ACCENT,
+                    ),
+                    Dialog::Result { title, body, ok } => (
+                        if *ok { icon::CHECK } else { icon::FIREWALL },
+                        title.clone(),
+                        body.clone(),
+                        if *ok { SUCCESS } else { DANGER },
+                    ),
+                };
+                ui.horizontal(|ui| {
+                    if self.icons {
+                        ui.label(RichText::new(glyph).size(22.0).color(color));
+                    }
+                    ui.label(RichText::new(title).font(theme::bold(17.0)));
+                });
+                ui.add_space(4.0);
+                ui.label(body);
+                ui.add_space(8.0);
+
+                if matches!(dialog, Dialog::Elevate | Dialog::Firewall) {
+                    let mut dont_ask = !self.s.startup_prompts;
+                    if ui.checkbox(&mut dont_ask, "Don't ask at startup").changed() {
+                        self.s.startup_prompts = !dont_ask;
+                    }
+                    ui.add_space(4.0);
+                }
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| match &dialog {
+                    Dialog::Elevate => {
+                        if primary_button(ui, "Restart as Administrator", true, 0.0).clicked() {
+                            do_elevate = true;
+                        }
+                        if ui.button("Continue").clicked() {
+                            close = true;
+                        }
+                    }
+                    Dialog::Firewall => {
+                        if primary_button(ui, &format!("Allow UDP/{port}"), true, 0.0).clicked() {
+                            do_firewall = true;
+                        }
+                        if ui.button("Not now").clicked() {
+                            close = true;
+                        }
+                    }
+                    Dialog::Result { .. } => {
+                        if primary_button(ui, "OK", true, 80.0).clicked() {
+                            close = true;
+                        }
+                    }
+                });
+            });
+        if close || modal.should_close() {
+            self.dialog = None;
+        }
+        if do_elevate {
+            self.dialog = None;
+            self.elevate(ctx);
+        }
+        if do_firewall {
+            self.dialog = None;
+            self.add_firewall_rule();
+        }
     }
 
     // --- main area -------------------------------------------------------
@@ -975,6 +1292,9 @@ impl eframe::App for App {
         if start {
             self.start_client();
         }
+        // Esc closes an open dialog instead of stopping the run.
+        #[cfg(windows)]
+        let stop = stop && self.dialog.is_none();
         if stop {
             self.stop_client();
         }
@@ -1001,21 +1321,33 @@ impl eframe::App for App {
             .resizable(false)
             .exact_size(SIDEBAR_WIDTH)
             .show_separator_line(false)
-            .frame(egui::Frame::new().fill(panel_fill).inner_margin(Margin {
-                left: 16,
-                right: 6,
-                top: 14,
-                bottom: 14,
-            }))
+            .frame(egui::Frame::new().fill(panel_fill))
             .show(ui, |ui| {
+                // Always show the scrollbar: the Windows card is below the fold at the
+                // default size, and egui's floating bars are invisible until hovered.
+                ui.spacing_mut().scroll = egui::style::ScrollStyle {
+                    dormant_handle_opacity: 0.35,
+                    ..egui::style::ScrollStyle::floating()
+                };
+                // The margins sit inside the scroll area, so the bar stays within the panel.
                 egui::ScrollArea::vertical()
                     .auto_shrink(false)
+                    .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible)
                     .show(ui, |ui| {
-                        ui.spacing_mut().item_spacing.y = 12.0;
-                        self.client_card(ui);
-                        self.responder_card(ui);
-                        #[cfg(windows)]
-                        self.windows_card(ui);
+                        egui::Frame::new()
+                            .inner_margin(Margin {
+                                left: 16,
+                                right: 6,
+                                top: 14,
+                                bottom: 14,
+                            })
+                            .show(ui, |ui| {
+                                ui.spacing_mut().item_spacing.y = 12.0;
+                                self.client_card(ui);
+                                self.responder_card(ui);
+                                #[cfg(windows)]
+                                self.windows_card(ui);
+                            });
                     });
             });
         egui::CentralPanel::default_margins()
@@ -1031,9 +1363,19 @@ impl eframe::App for App {
                 self.timing_card(ui);
                 self.log_card(ui);
             });
+        #[cfg(windows)]
+        {
+            let ctx = ui.ctx().clone();
+            self.dialogs(&ctx);
+        }
+        let ctx = ui.ctx().clone();
+        self.capture_tick(&ctx);
     }
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
+        if self.capture.is_some() {
+            return;
+        }
         self.s.mode = self.mode.name().into();
         eframe::set_value(storage, eframe::APP_KEY, &self.s);
     }
@@ -1043,10 +1385,31 @@ pub fn run() -> eframe::Result {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title(format!("{APP_NAME} {APP_VERSION}"))
-            .with_inner_size([1280.0, 860.0])
+            .with_inner_size(if std::env::var_os(CAPTURE_ENV).is_some() {
+                [1440.0, 880.0]
+            } else {
+                [1280.0, 860.0]
+            })
             .with_min_inner_size([1000.0, 680.0])
             .with_icon(theme::window_icon()),
+        // A screenshot run always uses the default window size.
+        persist_window: std::env::var_os(CAPTURE_ENV).is_none(),
+        // …and a throwaway store, so it neither reads nor overwrites the user's settings.
+        persistence_path: std::env::var_os(CAPTURE_ENV)
+            .map(|_| std::env::temp_dir().join(format!("ntpnts-capture-{}", std::process::id()))),
         ..Default::default()
     };
     eframe::run_native(APP_NAME, options, Box::new(|cc| Ok(Box::new(App::new(cc)))))
+}
+
+fn save_png(path: &std::path::Path, image: &egui::ColorImage) -> Result<(), String> {
+    let file = std::fs::File::create(path).map_err(|e| e.to_string())?;
+    let [w, h] = image.size;
+    let mut enc = png::Encoder::new(std::io::BufWriter::new(file), w as u32, h as u32);
+    enc.set_color(png::ColorType::Rgba);
+    enc.set_depth(png::BitDepth::Eight);
+    let mut writer = enc.write_header().map_err(|e| e.to_string())?;
+    writer
+        .write_image_data(image.as_raw())
+        .map_err(|e| e.to_string())
 }
