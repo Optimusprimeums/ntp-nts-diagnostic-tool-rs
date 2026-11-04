@@ -25,6 +25,7 @@ RELEASE_URL=${RELEASE_URL:-https://github.com/$PUBLIC/releases/tag/v$VERSION}
 DOWNLOAD_URL=${DOWNLOAD_URL:-$RELEASE_URL}
 WIKI_URL=https://github.com/$PUBLIC/wiki
 REPO_URL=https://github.com/$PUBLIC
+SOURCE_URL=https://github.com/Optimusprimeums/ntp-nts-diagnostic-tool-rs
 
 fill() {
   sed -e "s#{{VERSION}}#$VERSION#g" \
@@ -32,7 +33,8 @@ fill() {
       -e "s#{{DOWNLOAD_URL}}#$DOWNLOAD_URL#g" \
       -e "s#{{RELEASE_URL}}#$RELEASE_URL#g" \
       -e "s#{{WIKI_URL}}#$WIKI_URL#g" \
-      -e "s#{{REPO_URL}}#$REPO_URL#g"
+      -e "s#{{REPO_URL}}#$REPO_URL#g" \
+      -e "s#{{SOURCE_URL}}#$SOURCE_URL#g"
 }
 
 # The wiki wants page links without .md, and its pictures are served by the site.
@@ -64,9 +66,11 @@ render_wiki "$wiki"
 cat > "$pub/docs/RELEASING.md" <<EOF
 # Releasing
 
-Since 3.0 the tool is built from a separate repository, whose release workflow
-publishes the installer and updates this website and the wiki. The last
-release published this way was **$VERSION** ($RELEASE_DATE).
+Since 3.0 the tool is written in Rust and built from
+[Optimusprimeums/ntp-nts-diagnostic-tool-rs]($SOURCE_URL). Its release workflow
+publishes the installer there, copies the release to this repository, and
+updates this website and the wiki. The last release published this way was
+**$VERSION** ($RELEASE_DATE).
 
 The Python 2.x sources and releases stay in this repository.
 EOF

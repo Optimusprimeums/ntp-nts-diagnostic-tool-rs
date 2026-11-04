@@ -139,8 +139,8 @@ jobs:
       VERSION: ${{ needs.release.outputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      # This repository is private, so the public repository carries a copy of
-      # each release for the website's download buttons to point at.
+      # The website's repository carries a copy of each release, next to the
+      # Python 2.x releases, for the download buttons to point at.
       - name: Copy the release to the public repository
         if: github.ref_type == 'tag'
         env:

@@ -9,6 +9,8 @@ Version {{VERSION}} is written in Rust. It has a Windows installer, needs no run
 | `NTP-NTS-Diagnostic-Tool.exe` | The window: client, responder, live charts and log |
 | `ntpnts.exe` | The same engine on the command line, for scripts and CI |
 
+The source code is at [Optimusprimeums/ntp-nts-diagnostic-tool-rs]({{SOURCE_URL}}), where you can also [report an issue]({{SOURCE_URL}}/issues). Downloads are on the [releases page]({{REPO_URL}}/releases).
+
 ![The NTP/NTS Diagnostic Tool after an authenticated NTS run](../site/screenshots/v3-dark.png)
 
 ## Start here

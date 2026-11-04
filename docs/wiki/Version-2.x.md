@@ -1,6 +1,6 @@
 # Version 2.x
 
-Versions 2.0.2 and 2.1.0 were written in Python with a Tkinter window. They remain available from the [releases page](https://github.com/optimusprime-nn/ntp-nts-diagnostic-tool/releases).
+Versions 2.0.2 and 2.1.0 were written in Python with a Tkinter window. They remain available from the [releases page]({{REPO_URL}}/releases), and their source stays in [optimusprime-nn/ntp-nts-diagnostic-tool]({{REPO_URL}}). Version 3.x is a Rust rewrite, with its source in [Optimusprimeums/ntp-nts-diagnostic-tool-rs]({{SOURCE_URL}}).
 
 | Version | Notes |
 | --- | --- |

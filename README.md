@@ -11,7 +11,9 @@ Version **3.1.0** is written in Rust. It comes with a Windows installer and has 
 
 The client performs real NTS Key Establishment over TLS 1.3, negotiates `ntske/1`, derives client-to-server and server-to-client keys with the TLS exporter, exchanges NTS cookies, sends authenticated NTP requests with AEAD AES-SIV-CMAC-256, verifies authenticated replies, and reports offset, delay, server processing time, jitter and loss.
 
-Website: <https://optimusprime-nn.github.io/ntp-nts-diagnostic-tool/> · Wiki: <https://github.com/optimusprime-nn/ntp-nts-diagnostic-tool/wiki>. The Python 2.x releases remain at [optimusprime-nn/ntp-nts-diagnostic-tool](https://github.com/optimusprime-nn/ntp-nts-diagnostic-tool).
+**[Download](https://github.com/Optimusprimeums/ntp-nts-diagnostic-tool-rs/releases/latest)** · [Website](https://optimusprime-nn.github.io/ntp-nts-diagnostic-tool/) · [Wiki](https://github.com/optimusprime-nn/ntp-nts-diagnostic-tool/wiki) · [Report an issue](https://github.com/Optimusprimeums/ntp-nts-diagnostic-tool-rs/issues)
+
+This repository is the source of version 3.x. The earlier Python 2.x tool and its releases remain at [optimusprime-nn/ntp-nts-diagnostic-tool](https://github.com/optimusprime-nn/ntp-nts-diagnostic-tool).
 
 ## Installing
 
