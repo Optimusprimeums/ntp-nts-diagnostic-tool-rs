@@ -1,0 +1,48 @@
+# Checks, in about a minute, that the DOCS_PAT secret can push to the public
+# website repository and its wiki, without building or publishing anything.
+# Run it after creating or renewing the token.
+name: Check docs token
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    env:
+      PUBLIC: optimusprime-nn/ntp-nts-diagnostic-tool
+    steps:
+      - name: Check DOCS_PAT
+        env:
+          GH_TOKEN: ${{ secrets.DOCS_PAT }}
+        run: |
+          set -uo pipefail
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::error::DOCS_PAT is not set."
+            exit 1
+          fi
+          # Which account the token belongs to, and whether GitHub accepts it at all.
+          if ! login=$(gh api user --jq .login 2>err.log); then
+            cat err.log >&2
+            echo "::error::GitHub does not accept DOCS_PAT as a token. Copy it again, or create a new one."
+            exit 1
+          fi
+          echo "DOCS_PAT signs in as $login."
+          gh api "repos/$PUBLIC" --jq '"Repository permissions: \(.permissions // "none shown")"' || true
+          failed=0
+          for repo in "$PUBLIC" "$PUBLIC.wiki"; do
+            dir=$(basename "$repo")
+            git clone -q --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/${repo}.git" "$dir"
+            # Asking to push needs write access even when there is nothing to send.
+            if git -C "$dir" push --dry-run -q origin HEAD 2>push.log; then
+              echo "DOCS_PAT can push to $repo."
+            else
+              cat push.log >&2
+              echo "::error::DOCS_PAT cannot push to $repo."
+              failed=1
+            fi
+          done
+          exit $failed
